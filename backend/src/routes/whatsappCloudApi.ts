@@ -4,6 +4,14 @@ import { createMedia } from '../services/mediaService';
 import { uploadMedia } from '../middleware/upload';
 import prisma from '../db/client';
 import { getMediaTypeFromMime } from '../services/mediaService';
+import { isLocationPayload, parseInteractivePayload, parseLocationPayload } from '../services/structuredMessage';
+
+const cloudApiSuccess = (res: Response, recipient: string, wamid: string) =>
+  res.json({
+    messaging_product: "whatsapp",
+    contacts: [{ input: recipient, wa_id: recipient }],
+    messages: [{ id: wamid }]
+  });
 
 const router = Router();
 
@@ -132,12 +140,14 @@ router.post('/:phone_number_id/messages', async (req, res) => {
     const mediaTypes = ['image', 'document', 'audio', 'video', 'sticker'];
 
     if (body.type === 'text' && body.text?.body) {
-      const msg = await handleIncomingApiMessage(body.to, body.text.body, 'text');
-      return res.json({
-        messaging_product: "whatsapp",
-        contacts: [{ input: body.to, wa_id: body.to }],
-        messages: [{ id: msg.wamid }]
-      });
+      const recipient = body.to || body.recipient;
+      if (!recipient) {
+        return res.status(400).json({
+          error: { message: "to is required", type: "OAuthException", code: 100 }
+        });
+      }
+      const msg = await handleIncomingApiMessage(recipient, body.text.body, 'text');
+      return cloudApiSuccess(res, recipient, msg.wamid);
     } else if (mediaTypes.includes(body.type) && body[body.type]) {
       const mediaPayload = body[body.type];
       
@@ -161,24 +171,75 @@ router.post('/:phone_number_id/messages', async (req, res) => {
         });
       }
 
+      const recipient = body.to || body.recipient;
+      if (!recipient) {
+        return res.status(400).json({
+          error: { message: "to is required", type: "OAuthException", code: 100 }
+        });
+      }
+
       const caption = mediaPayload.caption;
       const filename = mediaPayload.filename;
 
       const msg = await handleIncomingApiMessage(
-        body.to, 
-        '', 
-        body.type, 
-        mediaIdStr, 
-        mediaLink, 
-        caption, 
+        recipient,
+        '',
+        body.type,
+        mediaIdStr,
+        mediaLink,
+        caption,
         filename
       );
 
-      return res.json({
-        messaging_product: "whatsapp",
-        contacts: [{ input: body.to, wa_id: body.to }],
-        messages: [{ id: msg.wamid }]
-      });
+      return cloudApiSuccess(res, recipient, msg.wamid);
+    } else if (body.type === 'location' && body.location) {
+      const recipient = body.to || body.recipient;
+      if (!recipient) {
+        return res.status(400).json({
+          error: { message: "to is required", type: "OAuthException", code: 100 }
+        });
+      }
+      const parsed = parseLocationPayload(body.location);
+      if (!isLocationPayload(parsed)) {
+        return res.status(400).json({
+          error: { message: parsed.error, type: "OAuthException", code: 100 }
+        });
+      }
+      const msg = await handleIncomingApiMessage(
+        recipient,
+        parsed.name || parsed.address || `${parsed.latitude}, ${parsed.longitude}`,
+        'location',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { payloadJson: JSON.stringify(parsed) }
+      );
+      return cloudApiSuccess(res, recipient, msg.wamid);
+    } else if (body.type === 'interactive' && body.interactive) {
+      const recipient = body.to || body.recipient;
+      if (!recipient) {
+        return res.status(400).json({
+          error: { message: "to is required", type: "OAuthException", code: 100 }
+        });
+      }
+      const parsed = parseInteractivePayload(body.interactive);
+      if ('error' in parsed) {
+        return res.status(400).json({
+          error: { message: parsed.error, type: "OAuthException", code: 100 }
+        });
+      }
+      const msg = await handleIncomingApiMessage(
+        recipient,
+        parsed.bodyText,
+        'interactive',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { payloadJson: JSON.stringify(parsed.payload) }
+      );
+      return cloudApiSuccess(res, recipient, msg.wamid);
     }
 
     if (body.status === 'read' && body.message_id) {

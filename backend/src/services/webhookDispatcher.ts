@@ -1,6 +1,66 @@
 import axios from 'axios';
 import prisma from '../db/client';
 
+const MEDIA_TYPES = ['image', 'document', 'audio', 'video', 'sticker'];
+
+const parsePayload = (message: any) => {
+  if (!message.payloadJson) return null;
+  try {
+    return JSON.parse(message.payloadJson);
+  } catch {
+    return null;
+  }
+};
+
+const buildContext = (message: any, businessPhone: string) => {
+  if (!message.contextWamid) return {};
+  return {
+    context: {
+      from: businessPhone,
+      id: message.contextWamid
+    }
+  };
+};
+
+const buildMessageBody = (message: any) => {
+  const payload = parsePayload(message);
+  const type = message.type || 'text';
+
+  if (type === 'text') {
+    return { text: { body: message.textBody } };
+  }
+
+  if (type === 'location' && payload) {
+    return { location: payload };
+  }
+
+  if (type === 'contacts' && payload) {
+    return { contacts: payload };
+  }
+
+  if (type === 'interactive' && payload) {
+    return { interactive: payload };
+  }
+
+  if (MEDIA_TYPES.includes(type)) {
+    return {
+      [type]: {
+        ...(message.mediaLink ? { link: message.mediaLink } : { id: message.mediaId || message.id }),
+        ...(message.media?.mimeType && { mime_type: message.media.mimeType }),
+        ...(message.media?.sha256 && { sha256: message.media.sha256 }),
+        ...(message.mediaCaption && { caption: message.mediaCaption }),
+        ...(message.mediaFilename && { filename: message.mediaFilename })
+      }
+    };
+  }
+
+  if (message.textBody) {
+    return { text: { body: message.textBody } };
+  }
+
+  return {};
+};
+
 export const dispatchWebhook = async (message: any, contact: any) => {
   const chat = await prisma.chat.findUnique({ where: { id: message.chatId } });
   
@@ -27,16 +87,8 @@ export const dispatchWebhook = async (message: any, contact: any) => {
             id: message.wamid,
             timestamp: Math.floor(message.timestamp.getTime() / 1000).toString(),
             type: message.type || "text",
-            ...(message.type === 'text' && { text: { body: message.textBody } }),
-            ...(message.type !== 'text' && {
-              [message.type]: {
-                ...(message.mediaLink ? { link: message.mediaLink } : { id: message.mediaId || message.id }),
-                ...(message.media?.mimeType && { mime_type: message.media.mimeType }),
-                ...(message.media?.sha256 && { sha256: message.media.sha256 }),
-                ...(message.mediaCaption && { caption: message.mediaCaption }),
-                ...(message.mediaFilename && { filename: message.mediaFilename })
-              }
-            })
+            ...buildMessageBody(message),
+            ...buildContext(message, chat.phoneNumber)
           }]
         }
       }]

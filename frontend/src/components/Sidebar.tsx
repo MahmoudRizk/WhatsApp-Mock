@@ -6,13 +6,13 @@ interface Props {
   chats: Chat[];
   activeChatId: string | null;
   onSelectChat: (chatId: string) => void;
-  onNewChat: (chatData: any) => void;
+  onNewChat: (chatData: any) => Promise<void>;
 }
 
-const InputField = ({ label, value, onChange, hint, type = "text" }: { label: string, value: string, onChange: (v: string) => void, hint: string, type?: string }) => (
+const InputField = ({ label, value, onChange, hint, type = "text", required = false, autoFocus = false }: { label: string, value: string, onChange: (v: string) => void, hint: string, type?: string, required?: boolean, autoFocus?: boolean }) => (
   <div className="mb-2">
     <label className="block text-xs font-semibold text-gray-600 mb-1" title={hint}>
-      {label} <span className="text-gray-400 font-normal cursor-help">ⓘ</span>
+      {label}{required ? <span className="text-red-500"> *</span> : null} <span className="text-gray-400 font-normal cursor-help">ⓘ</span>
     </label>
     <input 
       type={type} 
@@ -20,6 +20,8 @@ const InputField = ({ label, value, onChange, hint, type = "text" }: { label: st
       value={value}
       onChange={e => onChange(e.target.value)}
       title={hint}
+      required={required}
+      autoFocus={autoFocus}
     />
   </div>
 );
@@ -36,7 +38,7 @@ export const Sidebar: React.FC<Props> = ({ chats, activeChatId, onSelectChat, on
   const [showNewChat, setShowNewChat] = useState(false);
   
   const [contactPhone, setContactPhone] = useState('');
-  const [newWebhookUrl, setNewWebhookUrl] = useState('http://host.docker.internal:8000/api/whatsapp/webhook');
+  const [newWebhookUrl, setNewWebhookUrl] = useState('http://host.docker.internal:8000/webhook');
   const [webhookVerifyToken, setWebhookVerifyToken] = useState('mock_verify_token');
   const [phoneNumberId, setPhoneNumberId] = useState('100000000000001');
   const [wabaId, setWabaId] = useState('200000000000002');
@@ -46,6 +48,8 @@ export const Sidebar: React.FC<Props> = ({ chats, activeChatId, onSelectChat, on
   
   const [tags, setTags] = useState('');
   const [backgroundColor, setBackgroundColor] = useState('#efeae2');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const filtered = chats.filter(c => 
     c.contact?.phoneNumber.includes(search) || 
@@ -53,11 +57,18 @@ export const Sidebar: React.FC<Props> = ({ chats, activeChatId, onSelectChat, on
     c.tags?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleCreate = () => {
-    if (contactPhone) {
-      onNewChat({
-        contactPhone, 
-        name: contactPhone,
+  const handleCreate = async () => {
+    const phone = contactPhone.trim();
+    if (!phone) {
+      setFormError('Contact phone is required — it identifies the diner in this mock chat.');
+      return;
+    }
+    setFormError('');
+    setSaving(true);
+    try {
+      await onNewChat({
+        contactPhone: phone,
+        name: phone,
         webhookUrl: newWebhookUrl,
         phoneNumber,
         displayName,
@@ -69,6 +80,11 @@ export const Sidebar: React.FC<Props> = ({ chats, activeChatId, onSelectChat, on
       });
       setContactPhone('');
       setShowNewChat(false);
+    } catch (err: any) {
+      const detail = err?.response?.data?.error || err?.message || 'Could not create chat.';
+      setFormError(String(detail));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -82,13 +98,16 @@ export const Sidebar: React.FC<Props> = ({ chats, activeChatId, onSelectChat, on
       </div>
 
       {showNewChat && (
-        <div className="p-3 border-b bg-white overflow-y-auto max-h-[50vh]">
+        <div className="p-3 border-b bg-white flex flex-col max-h-[70vh]">
+          <div className="overflow-y-auto">
+          <InputField label="Contact Phone" value={contactPhone} onChange={(v) => { setContactPhone(v); setFormError(''); }} hint="The phone number of the recipient you are messaging." required autoFocus />
+          {formError && <p className="mb-2 text-xs text-red-600">{formError}</p>}
+
           <GroupHeader title="Server Settings" />
           <InputField label="Webhook URL" value={newWebhookUrl} onChange={setNewWebhookUrl} hint="The URL where incoming messages should be sent." />
           <InputField label="Verify Token" value={webhookVerifyToken} onChange={setWebhookVerifyToken} hint="Token used to verify the webhook setup." />
           <InputField label="Phone Number ID" value={phoneNumberId} onChange={setPhoneNumberId} hint="The ID of your WABA phone number." />
           <InputField label="WABA ID" value={wabaId} onChange={setWabaId} hint="Your WhatsApp Business Account ID." />
-          <InputField label="Contact Phone" value={contactPhone} onChange={setContactPhone} hint="The phone number of the recipient you are messaging." />
           
           <GroupHeader title="Sender Details" />
           <InputField label="Sender Phone Number" value={phoneNumber} onChange={setPhoneNumber} hint="Your WABA phone number." />
@@ -97,10 +116,13 @@ export const Sidebar: React.FC<Props> = ({ chats, activeChatId, onSelectChat, on
           <GroupHeader title="Others" />
           <InputField label="Tags" value={tags} onChange={setTags} hint="Comma-separated tags for categorizing this chat." />
           <InputField label="Background Color" type="color" value={backgroundColor} onChange={setBackgroundColor} hint="Color palette for the chat background." />
+          </div>
 
           <div className="flex gap-2 mt-4">
-            <button onClick={handleCreate} className="flex-1 bg-green-500 text-white rounded py-2 text-sm font-semibold">Create Chat</button>
-            <button onClick={() => setShowNewChat(false)} className="flex-1 border rounded py-2 text-sm">Cancel</button>
+            <button type="button" onClick={handleCreate} disabled={saving} className="flex-1 bg-green-500 text-white rounded py-2 text-sm font-semibold disabled:opacity-60">
+              {saving ? 'Creating…' : 'Create Chat'}
+            </button>
+            <button type="button" onClick={() => { setShowNewChat(false); setFormError(''); }} className="flex-1 border rounded py-2 text-sm">Cancel</button>
           </div>
         </div>
       )}

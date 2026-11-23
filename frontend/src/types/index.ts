@@ -20,6 +20,7 @@ export interface Chat {
   accessToken: string;
   tags: string;
   backgroundColor: string;
+  lastFlowSendJson?: string | null;
   lastMessageAt: string;
   unreadCount: number;
   messages?: Message[];
@@ -35,6 +36,86 @@ export interface Media {
   sha256: string;
   uploadedAt: string;
   expiresAt: string;
+}
+
+export interface LocationPayload {
+  latitude: number;
+  longitude: number;
+  name?: string;
+  address?: string;
+}
+
+export interface FlowActionPayloadScreen {
+  screen?: string;
+  data?: FlowScreenData;
+}
+
+export interface FlowScreenOption {
+  id: string;
+  title: string;
+}
+
+export interface FlowScreenData {
+  channel_name?: string;
+  customer_name?: string;
+  heading?: string;
+  label_name?: string;
+  label_fulfillment?: string;
+  cta_continue?: string;
+  fulfillment_methods?: FlowScreenOption[];
+  pickup_stores?: FlowScreenOption[];
+  payments_delivery?: FlowScreenOption[];
+  payments_pickup?: FlowScreenOption[];
+}
+
+export interface FlowActionParameters {
+  flow_message_version?: string;
+  flow_id?: string;
+  flow_token?: string;
+  flow_cta?: string;
+  flow_action?: string;
+  flow_action_payload?: FlowActionPayloadScreen;
+  [key: string]: unknown;
+}
+
+export interface LastFlowSend {
+  flow_id: string;
+  flow_token: string;
+  wamid: string;
+  screen_data?: FlowScreenData | null;
+}
+
+export interface NfmReplyFields {
+  flow_token: string;
+  customer_name: string;
+  fulfillment: 'delivery' | 'pickup' | string;
+  payment_option_code: string;
+  area: string;
+  street: string;
+  building_number: string;
+  floor_number: string;
+  apartment_number: string;
+  landmark: string;
+  store_id: string;
+}
+
+export interface InteractivePayload {
+  type: 'location_request_message' | 'request_contact_info' | 'flow' | 'nfm_reply' | string;
+  header?: { type?: string; text?: string };
+  body?: { text: string };
+  footer?: { text?: string };
+  action?: { name?: string; parameters?: FlowActionParameters };
+  nfm_reply?: {
+    name?: string;
+    body?: string;
+    response_json?: string;
+  };
+}
+
+export interface SharedContact {
+  origin?: 'contact_request' | 'other' | string;
+  name?: { formatted_name?: string; first_name?: string };
+  phones?: { phone: string; wa_id?: string; type?: string }[];
 }
 
 export interface Message {
@@ -55,6 +136,8 @@ export interface Message {
   mediaLink?: string;
   mediaCaption?: string;
   mediaFilename?: string;
+  payloadJson?: string | null;
+  contextWamid?: string | null;
 }
 
 export interface WebhookLog {

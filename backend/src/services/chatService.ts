@@ -1,5 +1,11 @@
 import prisma from '../db/client';
 import { getSocket } from '../ws/socketHandler';
+import { extractLastFlowSend } from './structuredMessage';
+
+export type IncomingMessageExtras = {
+  payloadJson?: string;
+  contextWamid?: string;
+};
 
 export const handleIncomingApiMessage = async (
   toPhone: string, 
@@ -8,7 +14,8 @@ export const handleIncomingApiMessage = async (
   mediaId?: string,
   mediaLink?: string,
   mediaCaption?: string,
-  mediaFilename?: string
+  mediaFilename?: string,
+  extras?: IncomingMessageExtras
 ) => {
   // Find or create contact
   let contact = await prisma.contact.findUnique({ where: { phoneNumber: toPhone } });
@@ -46,15 +53,23 @@ export const handleIncomingApiMessage = async (
       mediaCaption,
       mediaFilename,
       mediaUrl,
+      payloadJson: extras?.payloadJson,
+      contextWamid: extras?.contextWamid,
       status: 'DELIVERED'
     },
     include: { chat: { include: { contact: true } }, media: true }
   });
 
+  const lastFlowSend = extractLastFlowSend(type, extras?.payloadJson, wamid);
+
   // Update chat lastMessageAt and unread
   await prisma.chat.update({
     where: { id: chat.id },
-    data: { lastMessageAt: new Date(), unreadCount: { increment: 1 } }
+    data: {
+      lastMessageAt: new Date(),
+      unreadCount: { increment: 1 },
+      ...(lastFlowSend && { lastFlowSendJson: JSON.stringify(lastFlowSend) })
+    }
   });
 
   // Emit websocket event
@@ -65,11 +80,17 @@ export const handleIncomingApiMessage = async (
 };
 
 export const markMessageRead = async (wamid: string) => {
-  const msg = await prisma.message.update({
+  const updated = await prisma.message.updateMany({
     where: { wamid },
     data: { status: 'READ' }
   });
-  const io = getSocket();
-  io.emit('message:status', msg);
+  if (updated.count === 0) {
+    return { wamid, status: 'READ' };
+  }
+  const msg = await prisma.message.findUnique({ where: { wamid } });
+  if (msg) {
+    const io = getSocket();
+    io.emit('message:status', msg);
+  }
   return msg;
 };

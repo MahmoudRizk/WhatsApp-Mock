@@ -5,7 +5,8 @@ import { ChatWindow } from './components/ChatWindow';
 import { Activity } from 'lucide-react';
 import api from './services/api';
 import socket from './services/socket';
-import { Chat, Message } from './types';
+import { Chat, LocationPayload, Message } from './types';
+import { FlowFormValues } from './components/FlowCompleteModal';
 
 function App() {
   const [isLogsOpen, setIsLogsOpen] = useState(false);
@@ -48,13 +49,9 @@ function App() {
   }, [activeChatId]);
 
   const handleNewChat = async (chatData: any) => {
-    try {
-      const res = await api.post('/chats', chatData);
-      fetchChats();
-      setActiveChatId(res.data.id);
-    } catch (err) {
-      console.error(err);
-    }
+    const res = await api.post('/chats', chatData);
+    fetchChats();
+    setActiveChatId(res.data.id);
   };
 
   const handleSendMessage = async (text: string) => {
@@ -110,6 +107,29 @@ function App() {
     }
   };
 
+  const handleSendLocation = async (location: LocationPayload, contextWamid?: string) => {
+    if (!activeChatId) return;
+    try {
+      await api.post(`/chats/${activeChatId}/messages/location`, { location, contextWamid });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleShareContact = async (contextWamid?: string) => {
+    if (!activeChatId) return;
+    try {
+      await api.post(`/chats/${activeChatId}/messages/contacts`, { contextWamid });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCompleteFlow = async (values: FlowFormValues, contextWamid?: string) => {
+    if (!activeChatId) return;
+    await api.post(`/chats/${activeChatId}/messages/nfm-reply`, { ...values, contextWamid });
+  };
+
   const handleDeleteChat = async (id: string) => {
     try {
       await api.delete(`/chats/${id}`);
@@ -148,6 +168,9 @@ function App() {
           onSendMessage={handleSendMessage}
           onSendAudio={handleSendAudio}
           onSendMedia={handleSendMedia}
+          onSendLocation={handleSendLocation}
+          onShareContact={handleShareContact}
+          onCompleteFlow={handleCompleteFlow}
           onUpdateChat={(updatedChat) => {
             setChats(prev => prev.map(c => c.id === updatedChat.id ? { ...c, ...updatedChat } : c));
           }}

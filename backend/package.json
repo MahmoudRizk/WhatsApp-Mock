@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "npx tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "node --require ts-node/register/transpile-only --test src/services/structuredMessage.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

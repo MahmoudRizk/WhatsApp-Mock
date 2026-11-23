@@ -26,10 +26,11 @@ model Chat {
   phoneNumberId      String    @default("100000000000001")
   wabaId             String    @default("200000000000002")
   webhookVerifyToken String    @default("mock_verify_token")
-  webhookUrl         String    @default("http://host.docker.internal:8000/api/whatsapp/webhook")
+  webhookUrl         String    @default("http://host.docker.internal:8000/webhook")
   accessToken        String    @default("mock_access_token_secret")
   tags               String    @default("") // Comma-separated list of tags
   backgroundColor    String    @default("") // e.g. "#ffffff"
+  lastFlowSendJson   String?   // { flow_id, flow_token, wamid } of last inbound Flow
   lastMessageAt      DateTime  @default(now())
   unreadCount        Int       @default(0)
   createdAt          DateTime  @default(now())
@@ -56,6 +57,8 @@ model Message {
   mediaLink      String?
   mediaCaption   String?
   mediaFilename  String?
+  payloadJson    String?  // location / interactive / contacts payload
+  contextWamid   String?  // wamid of the message being replied to
 }
 
 model WebhookLog {

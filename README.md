@@ -33,6 +33,9 @@ WhatsApp Mock Service eliminates that friction by:
 - **Per-chat configuration** — each chat has its own webhook URL, phone number ID, WABA ID, and verify token
 - **Webhook forwarding** — inbound messages are dispatched to your server in the official WhatsApp Cloud API payload format
 - **Text & media messages** — send plain text, record voice notes, or upload media (images, documents, videos, stickers) directly from the UI
+- **Location pins** — send and receive Cloud API `location` messages, shown as a pin card in the chat
+- **Info requests** — accept `request_contact_info` cards that ask the user to share their phone number with a button
+- **Location requests** — accept `location_request_message` cards that ask the user to share a location pin
 - **Webhook logs** — inspect every outbound webhook call including the payload, response code, and body
 - **Chat tagging** — assign comma-separated tags to chats for easier triage across different test environments
 - **Media Support** — complete WhatsApp Cloud API mirror for uploading files, sending media messages, and two-step retrieval
@@ -144,7 +147,7 @@ extra_hosts:
 So if your application's webhook listens on port `8000`, set the Webhook URL in the chat settings to:
 
 ```
-http://host.docker.internal:8000/api/whatsapp/webhook
+http://host.docker.internal:8000/webhook
 ```
 
 ---
@@ -199,6 +202,8 @@ From the chat window:
 
 - **Text** — type in the input field and press Enter or click send
 - **Voice** — click the microphone icon, record, and click send
+- **Location pin** — click the map-pin icon, enter coordinates (or use the current location), and send
+- **Info / location request cards** — when the business sends a request card, tap **Share contact info** or **Send location**. The mock then dispatches a `contacts` or `location` webhook.
 
 ### Webhook Payload Format
 
@@ -281,6 +286,70 @@ Content-Type: application/json
 
 The message will appear in the chat UI as an outbound message.
 
+**Send Location Pin**:
+```bash
+POST /v22.0/<phone_number_id>/messages
+Content-Type: application/json
+
+{
+  "messaging_product": "whatsapp",
+  "to": "<contact_phone>",
+  "type": "location",
+  "location": {
+    "latitude": "32.0853",
+    "longitude": "34.7818",
+    "name": "Office",
+    "address": "Rothschild Blvd, Tel Aviv"
+  }
+}
+```
+
+**Request Contact Info** (card with a share-phone-number button):
+```bash
+POST /v22.0/<phone_number_id>/messages
+Content-Type: application/json
+
+{
+  "messaging_product": "whatsapp",
+  "to": "<contact_phone>",
+  "type": "interactive",
+  "interactive": {
+    "type": "request_contact_info",
+    "body": {
+      "text": "Please share your phone number so we can finish your request."
+    },
+    "action": {
+      "name": "request_contact_info"
+    }
+  }
+}
+```
+
+When the tester taps **Share contact info**, the webhook receives a `type: "contacts"` message (with `origin: "contact_request"`) for that chat's contact phone number.
+
+**Request Location** (card with a send-location button):
+```bash
+POST /v22.0/<phone_number_id>/messages
+Content-Type: application/json
+
+{
+  "messaging_product": "whatsapp",
+  "to": "<contact_phone>",
+  "type": "interactive",
+  "interactive": {
+    "type": "location_request_message",
+    "body": {
+      "text": "Please share your pickup location."
+    },
+    "action": {
+      "name": "send_location"
+    }
+  }
+}
+```
+
+When the tester taps **Send location** and confirms a pin, the webhook receives a `type: "location"` message with `context.id` set to the request's `wamid`.
+
 ### Webhook Logs
 
 Click the **Activity** icon in the top bar to open the Webhook Logs panel. Every outbound webhook dispatch is recorded with:
@@ -311,6 +380,15 @@ Make sure your webhook URL uses `host.docker.internal` instead of `localhost`. C
 
 `host.docker.internal` **does not resolve**
 This is handled automatically by the `extra_hosts` setting in `docker-compose.yml`. If you run the services outside Docker, use `localhost` directly.
+
+**"The table `main.Chat` does not exist"**
+SQLite is empty until Prisma creates the schema. Newer images run `prisma db push` on start. On an already-running container:
+
+```bash
+docker compose exec backend npx prisma db push
+```
+
+Then reload the UI.
 
 **Database reset**
 The SQLite file lives at `backend/prisma/dev.db`. To reset all data, stop the containers and delete that file, then restart.

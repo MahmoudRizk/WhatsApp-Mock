@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Mic, Trash2, Paperclip } from 'lucide-react';
+import { Send, Mic, Trash2, Paperclip, MapPin } from 'lucide-react';
 import { AudioRecorder } from './AudioRecorder';
 import { MediaPreview } from './MediaPreview';
 
@@ -7,9 +7,10 @@ interface Props {
   onSend: (text: string) => void;
   onSendAudio?: (blob: Blob) => void;
   onSendMedia?: (file: File) => void;
+  onShareLocation?: () => void;
 }
 
-export const MessageInput: React.FC<Props> = ({ onSend, onSendAudio, onSendMedia }) => {
+export const MessageInput: React.FC<Props> = ({ onSend, onSendAudio, onSendMedia, onShareLocation }) => {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -83,9 +84,16 @@ export const MessageInput: React.FC<Props> = ({ onSend, onSendAudio, onSendMedia
         />
         
         {!audioUrl && (
-          <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-500 hover:text-gray-700">
-            <Paperclip size={24} />
-          </button>
+          <>
+            <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-500 hover:text-gray-700" title="Attach file">
+              <Paperclip size={24} />
+            </button>
+            {onShareLocation && (
+              <button onClick={onShareLocation} className="p-2 text-gray-500 hover:text-gray-700" title="Share location pin">
+                <MapPin size={24} />
+              </button>
+            )}
+          </>
         )}
 
         {audioUrl ? (

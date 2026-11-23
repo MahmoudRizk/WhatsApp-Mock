@@ -1,9 +1,17 @@
 import React from 'react';
+import { Check, CheckCheck, MapPin, Phone, User } from 'lucide-react';
 import { Message } from '../types';
 import { parseWhatsAppMarkdown } from '../utils/whatsappMarkdownParser';
-import { Check, CheckCheck } from 'lucide-react';
+import { getInteractivePayload, getLocationPayload, getSharedContacts } from '../utils/messagePayload';
 
-export const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
+interface Props {
+  message: Message;
+  onRequestLocation?: (contextWamid: string) => void;
+  onShareContact?: (contextWamid: string) => void;
+  onCompleteFlow?: (contextWamid: string) => void;
+}
+
+export const MessageBubble: React.FC<Props> = ({ message, onRequestLocation, onShareContact, onCompleteFlow }) => {
   const isOutbound = message.direction === 'OUTBOUND';
   const time = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const htmlContent = message.textBody ? parseWhatsAppMarkdown(message.textBody) : '';
@@ -22,10 +30,103 @@ export const MessageBubble: React.FC<{ message: Message }> = ({ message }) => {
   
   const getMediaUrl = (url: string) => url.startsWith('http') ? url : `${API_BASE}${url}`;
 
+  const renderLocation = () => {
+    const location = getLocationPayload(message);
+    if (!location) return <span className="text-gray-500 italic">Location missing</span>;
+    const mapsUrl = `https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
+    return (
+      <a href={mapsUrl} target="_blank" rel="noreferrer" className="block min-w-[220px] no-underline">
+        <div className="bg-[#e7f8e9] rounded-md overflow-hidden">
+          <div className="h-24 flex items-center justify-center bg-gradient-to-b from-green-100 to-green-50">
+            <MapPin size={36} className="text-red-500" />
+          </div>
+          <div className="p-2">
+            <p className="text-sm font-semibold text-gray-800">{location.name || 'Location pin'}</p>
+            {location.address && <p className="text-xs text-gray-600">{location.address}</p>}
+            <p className="text-[11px] text-gray-500 mt-1">{location.latitude}, {location.longitude}</p>
+          </div>
+        </div>
+      </a>
+    );
+  };
+
+  const renderInteractive = () => {
+    const interactive = getInteractivePayload(message);
+    if (interactive?.type === 'nfm_reply') {
+      return (
+        <div className="min-w-[180px]">
+          <p className="text-xs text-gray-500 mb-1">Checkout details</p>
+          <p className="text-sm text-gray-800">{interactive.nfm_reply?.body || 'Sent'}</p>
+        </div>
+      );
+    }
+
+    const isFlow = interactive?.type === 'flow';
+    const body = interactive?.body?.text || (!isFlow ? (message.textBody || 'Information request') : '');
+    const header = interactive?.header?.text;
+    const footer = interactive?.footer?.text;
+    const isLocationRequest = interactive?.type === 'location_request_message';
+    const isContactRequest = interactive?.type === 'request_contact_info';
+    const flowCta = interactive?.action?.parameters?.flow_cta || 'Complete details';
+    const canAct = !isOutbound && (isLocationRequest || isContactRequest || isFlow);
+
+    return (
+      <div className="min-w-[220px]">
+        {isFlow && header && (
+          <p className="text-sm font-semibold text-gray-900 mb-1 break-words">{header}</p>
+        )}
+        {body ? (
+          <p className="text-sm text-gray-800 break-words whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: parseWhatsAppMarkdown(body) }} />
+        ) : null}
+        {isFlow && footer && (
+          <p className="text-xs text-gray-500 mt-1">{footer}</p>
+        )}
+        {canAct && (
+          <button
+            type="button"
+            onClick={() => {
+              if (isFlow) onCompleteFlow?.(message.wamid);
+              else if (isLocationRequest) onRequestLocation?.(message.wamid);
+              else onShareContact?.(message.wamid);
+            }}
+            className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-md bg-[#00a884] text-white text-sm font-medium hover:bg-[#008f6f]"
+          >
+            {isFlow ? null : isLocationRequest ? <MapPin size={16} /> : <Phone size={16} />}
+            {isFlow ? flowCta : isLocationRequest ? 'Send location' : 'Share contact info'}
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const renderContacts = () => {
+    const contacts = getSharedContacts(message);
+    if (!contacts.length) return <span className="text-gray-500 italic">Contact missing</span>;
+    return (
+      <div className="flex flex-col gap-2 min-w-[200px]">
+        {contacts.map((contact, index) => (
+          <div key={index} className="flex items-center gap-3 bg-black/5 rounded-md p-2">
+            <div className="w-9 h-9 rounded-full bg-[#00a884] text-white flex items-center justify-center">
+              <User size={18} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-800">{contact.name?.formatted_name || 'Shared contact'}</p>
+              <p className="text-xs text-gray-600">{contact.phones?.[0]?.phone || message.textBody}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderContent = () => {
     if (message.type === 'text') {
       return <p className="text-sm text-gray-800 break-words whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: htmlContent }} />;
     }
+
+    if (message.type === 'location') return renderLocation();
+    if (message.type === 'interactive') return renderInteractive();
+    if (message.type === 'contacts') return renderContacts();
     
     if (!message.mediaUrl) {
       return <span className="text-gray-500 italic">Media missing</span>;
